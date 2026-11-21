@@ -21,14 +21,13 @@ pub struct Model {
     pub device_routes: IntMap<DeviceId, Vec<RouteInfo>>,
     pub device_active_routes: IntMap<DeviceId, u32>,
     pub node_devices: IntMap<NodeId, Option<u32>>,
-    /// Selectable routes (ports) of the current default output device.
-    pub sink_route_display: Vec<Arc<str>>,
-    /// Route indexes, parallel to `sink_route_display`.
-    pub sink_route_index: Vec<u32>,
-    /// Position of the active route within `sink_route_display`.
-    pub sink_route_active: Option<usize>,
-    /// Device ID and card profile device of the current default output device.
-    pub sink_route_device: Option<(DeviceId, u32)>,
+    /// One entry per selectable output: a device with a single route gives one
+    /// entry, a device with several ports gives one entry per port.
+    pub sink_options: Vec<SinkOption>,
+    /// Labels of `sink_options`, parallel to it and sorted for the dropdown.
+    pub sink_options_display: Vec<Arc<str>>,
+    /// Position of the selected entry within `sink_options`.
+    pub sink_options_active: Option<usize>,
     pub playback: Vec<Playback>,
     pub sinks: Nodes,
     pub sources: Nodes,
@@ -37,6 +36,18 @@ pub struct Model {
     pub default_sink: Option<NodeId>,
     pub default_source: Option<NodeId>,
     pub text: Text,
+}
+
+/// One selectable output in the output dropdown. Devices with several ports
+/// (routes) contribute one entry per port.
+#[derive(Clone, Debug)]
+pub struct SinkOption {
+    /// The sink node this entry belongs to.
+    pub sink_id: NodeId,
+    /// Associated device, when the sink is backed by a real device.
+    pub device: Option<(DeviceId, u32)>,
+    /// Route (port) index to select, when the device has several ports.
+    pub route_index: Option<u32>,
 }
 
 #[derive(Clone, Debug)]
@@ -447,63 +458,91 @@ impl Model {
             _ => (),
         }
 
-        self.update_sink_routes();
+        self.update_sink_options();
     }
 
-    /// Rebuild the list of routes (ports) which can be selected for the default
-    /// output device. Routes are included even when the port is reported as
-    /// unavailable: the hardware may still be usable, e.g. the internal speakers
-    /// while headphones are plugged in.
-    fn update_sink_routes(&mut self) {
-        self.sink_route_display.clear();
-        self.sink_route_index.clear();
-        self.sink_route_active = None;
-        self.sink_route_device = None;
+    /// Rebuild the output dropdown. A device with several routes (ports)
+    /// contributes one entry per port, labelled like the existing
+    /// "port - device" names, so selecting a port is just selecting an entry.
+    /// Ports reported as unavailable are kept: the hardware may still be
+    /// usable, e.g. the internal speakers while headphones are plugged in.
+    fn update_sink_options(&mut self) {
+        let default = self.default_sink;
+        let mut options = Vec::with_capacity(self.sinks.id.len());
 
-        let Some(sink_id) = self.default_sink else {
-            return;
-        };
+        for pos in 0..self.sinks.id.len() {
+            let sink_id = self.sinks.id[pos];
+            let node_description = self.sinks.description[pos].clone();
+            let device = self
+                .node_devices
+                .get(sink_id)
+                .copied()
+                .flatten()
+                .zip(self.sinks.card_profile_device[pos]);
 
-        let Some(device_id) = self.node_devices.get(sink_id).copied().flatten() else {
-            return;
-        };
+            let routes = device
+                .and_then(|(device_id, card_profile_device)| {
+                    self.device_routes.get(device_id).map(|routes| {
+                        routes
+                            .iter()
+                            .filter(|route| {
+                                route.is_sink && route.devices.contains(&card_profile_device)
+                            })
+                            .map(|route| (route.index, self.translate(&route.description)))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .unwrap_or_default();
 
-        let Some(pos) = self.sinks.id.iter().position(|&id| id == sink_id) else {
-            return;
-        };
-
-        let Some(card_profile_device) = self.sinks.card_profile_device[pos] else {
-            return;
-        };
-
-        let Some(routes) = self.device_routes.get(device_id) else {
-            return;
-        };
-
-        let active_route = self.device_active_routes.get(device_id).copied();
-
-        let mut options = routes
-            .iter()
-            .filter(|route| route.is_sink && route.devices.contains(&card_profile_device))
-            .map(|route| (route.index, Arc::from(self.translate(&route.description))))
-            .collect::<Vec<(u32, Arc<str>)>>();
-
-        options.sort_by(|a, b| a.1.cmp(&b.1));
-
-        if options.is_empty() {
-            return;
-        }
-
-        for (index, description) in options {
-            if active_route == Some(index) {
-                self.sink_route_active = Some(self.sink_route_display.len());
+            if routes.len() > 1 {
+                for (route_index, description) in routes {
+                    let label = node_name(&description, &node_description);
+                    options.push((
+                        label,
+                        SinkOption {
+                            sink_id,
+                            device,
+                            route_index: Some(route_index),
+                        },
+                    ));
+                }
+            } else {
+                let label = self.sinks.display[pos].clone();
+                options.push((
+                    label,
+                    SinkOption {
+                        sink_id,
+                        device,
+                        route_index: None,
+                    },
+                ));
             }
-
-            self.sink_route_index.push(index);
-            self.sink_route_display.push(description);
         }
 
-        self.sink_route_device = Some((device_id, card_profile_device));
+        options.sort_by(|a, b| a.0.cmp(&b.0));
+
+        self.sink_options.clear();
+        self.sink_options_display.clear();
+
+        for (label, option) in options {
+            self.sink_options.push(option);
+            self.sink_options_display.push(label);
+        }
+
+        let is_active_route = |option: &SinkOption| match option.route_index {
+            Some(index) => {
+                option
+                    .device
+                    .and_then(|(device_id, _)| self.device_active_routes.get(device_id).copied())
+                    == Some(index)
+            }
+            None => true,
+        };
+
+        self.sink_options_active = self
+            .sink_options
+            .iter()
+            .position(|option| default == Some(option.sink_id) && is_active_route(option));
     }
 
     pub fn translate(&self, description: &str) -> String {
@@ -663,7 +702,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_unavailable_sink_routes_and_marks_the_active_one() {
+    fn merges_ports_into_the_output_device_list() {
         let mut model = Model::default();
         model.update(Event::Node(10, sink_node()));
         model.update(Event::DefaultSink(10));
@@ -681,15 +720,25 @@ mod tests {
             route(1, "Headphones", Availability::Yes),
         ));
 
-        let descriptions = model
-            .sink_route_display
+        let labels = model
+            .sink_options_display
             .iter()
-            .map(|description| description.to_string())
+            .map(|label| label.to_string())
             .collect::<Vec<_>>();
 
-        assert_eq!(descriptions, ["Headphones", "Speaker"]);
-        assert_eq!(model.sink_route_index, [1, 0]);
-        assert_eq!(model.sink_route_active, Some(0));
-        assert_eq!(model.sink_route_device, Some((1, 0)));
+        assert_eq!(
+            labels,
+            ["Headphones - Analog Stereo", "Speaker - Analog Stereo"]
+        );
+        assert_eq!(
+            model
+                .sink_options
+                .iter()
+                .map(|option| option.route_index)
+                .collect::<Vec<_>>(),
+            [Some(1), Some(0)]
+        );
+        assert_eq!(model.sink_options_active, Some(0));
+        assert!(model.sink_options.iter().all(|option| option.sink_id == 10));
     }
 }

@@ -28,10 +28,8 @@ pub enum Message {
     Model(cosmic_settings_sound::Message),
     /// Reattach the client
     ReattachClient(Arc<Client>),
-    /// Change the default output.
-    SetDefaultSink(usize),
-    /// Change the route (port) of the default output device.
-    SetSinkRoute(usize),
+    /// Change the default output; entries that belong to a port also switch it.
+    SetSinkOption(usize),
     /// Change the default input output.
     SetDefaultSource(usize),
     /// Change the balance of the active sink.
@@ -207,28 +205,24 @@ impl Page {
                 }
             }
 
-            Message::SetDefaultSink(pos) => {
-                if let Some(&pos) = self.model.sinks.sorted_index.get(pos)
-                    && let Some(&node_id) = self.model.sinks.id.get(pos as usize)
-                    && let Some(client) = self.client.as_mut()
-                {
+            Message::SetSinkOption(pos) => {
+                let Some(option) = self.model.sink_options.get(pos).cloned() else {
+                    return Task::none();
+                };
+                let is_default = self.model.default_sink == Some(option.sink_id);
+                if let Some(client) = self.client.as_mut() {
                     block_on(async {
-                        _ = client.conn.set_default(node_id, true).await;
-                    });
-                }
-            }
-
-            Message::SetSinkRoute(pos) => {
-                if let (Some((device_id, card_profile_device)), Some(&route_index), Some(client)) = (
-                    self.model.sink_route_device,
-                    self.model.sink_route_index.get(pos),
-                    self.client.as_mut(),
-                ) {
-                    block_on(async {
-                        _ = client
-                            .conn
-                            .set_route(device_id, card_profile_device, route_index, true)
-                            .await;
+                        if !is_default {
+                            _ = client.conn.set_default(option.sink_id, true).await;
+                        }
+                        if let (Some((device_id, card_profile_device)), Some(route_index)) =
+                            (option.device, option.route_index)
+                        {
+                            _ = client
+                                .conn
+                                .set_route(device_id, card_profile_device, route_index, true)
+                                .await;
+                        }
                     });
                 }
             }
@@ -428,7 +422,6 @@ fn output() -> Section<crate::pages::Message> {
     crate::slab!(descriptions {
         volume = fl!("sound-output", "volume");
         device = fl!("sound-output", "device");
-        port = fl!("sound-output", "port");
         _level = fl!("sound-output", "level");
         balance = fl!("sound-output", "balance");
         left = fl!("sound-output", "left");
@@ -474,20 +467,9 @@ fn output() -> Section<crate::pages::Message> {
                 .push(slider);
 
             let devices = widget::dropdown::popup_dropdown(
-                &page.model.sinks.sorted_display,
-                page.model.sinks.active(),
-                Message::SetDefaultSink,
-                window::Id::RESERVED,
-                Message::Surface,
-                crate::Message::from,
-            )
-            .apply(Element::from)
-            .map(crate::pages::Message::from);
-
-            let ports = widget::dropdown::popup_dropdown(
-                &page.model.sink_route_display,
-                page.model.sink_route_active,
-                Message::SetSinkRoute,
+                &page.model.sink_options_display,
+                page.model.sink_options_active,
+                Message::SetSinkOption,
                 window::Id::RESERVED,
                 Message::Surface,
                 crate::Message::from,
@@ -503,10 +485,6 @@ fn output() -> Section<crate::pages::Message> {
                         .align_items(Alignment::Center),
                 )
                 .add(settings::item(&*section.descriptions[device], devices))
-                .add_maybe(
-                    (page.model.sink_route_display.len() > 1)
-                        .then(|| settings::item(&*section.descriptions[port], ports)),
-                )
                 .add(settings::item(
                     &*section.descriptions[balance],
                     widget::row::with_capacity(5)

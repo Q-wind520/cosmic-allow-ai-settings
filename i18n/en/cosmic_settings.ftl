@@ -653,7 +653,6 @@ sound = Sound
 sound-output = Output
     .volume = Output volume
     .device = Output device
-    .port = Output port
     .level = Output level
     .config = Configuration
     .balance = Balance
