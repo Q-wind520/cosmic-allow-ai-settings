@@ -2,6 +2,22 @@
 
 The settings application for the [COSMIC desktop environment][cosmic-epoch].
 
+## This fork
+
+Personal fork of [pop-os/cosmic-settings](https://github.com/pop-os/cosmic-settings),
+not affiliated with System76 or the COSMIC project.
+
+**AI-assisted pull requests are welcome here.** Unlike upstream, this fork accepts
+contributions that contain LLM-generated code, comments and descriptions. Say which
+parts were AI-assisted, and make sure you understand the change well enough to answer
+review comments. See [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+Changes carried in this fork:
+
+- Sound → Output lists each port of an output device as its own entry
+  ("Headphones - …", "Speaker - …"), so the port can be switched without unplugging
+  anything. See [docs/audio-output-port.md](./docs/audio-output-port.md).
+
 ## Translators
 
 Translations must go through Weblate at https://hosted.weblate.org/projects/pop-os/cosmic-settings.
