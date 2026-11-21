@@ -52,12 +52,16 @@ Install this build to `/usr/local` instead. `/usr/local/bin` comes first in
 `PATH`, so the desktop entry (`Exec=cosmic-settings`) starts this binary, and
 package upgrades do not touch it.
 
+The binary is installed under this fork's name, with a `cosmic-settings`
+symlink so existing desktop entries and panel buttons keep working:
+
 ```sh
 cargo build --release -p cosmic-settings
-sudo install -Dm0755 target/release/cosmic-settings /usr/local/bin/cosmic-settings
+sudo install -Dm0755 target/release/cosmic-settings /usr/local/bin/cosmic-allow-ai-settings
+sudo ln -sfn cosmic-allow-ai-settings /usr/local/bin/cosmic-settings
 ```
 
-The packaged app stays installed as a fallback. Re-run these two commands after
+The packaged app stays installed as a fallback. Re-run these commands after
 pulling upstream changes.
 
 `just install` (with `prefix=/usr/local`) additionally installs the desktop
