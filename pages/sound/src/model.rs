@@ -387,8 +387,10 @@ impl Model {
                 }
             }
 
-            audio_client::Event::ActiveRoute(device_id, index, route) => {
-                self.device_active_routes.insert(device_id, index);
+            audio_client::Event::ActiveRoute(device_id, _index, route) => {
+                // The event's index is the enumeration position, which does not
+                // necessarily match the SPA route index used by `set_route`.
+                self.device_active_routes.insert(device_id, route.index);
                 self.update_device_names(device_id, &route);
             }
 
@@ -671,9 +673,11 @@ mod tests {
             1,
             route(1, "Headphones", Availability::Yes),
         ));
+        // The enumeration position (0) deliberately differs from the SPA
+        // route index (1); the active route must be resolved from the latter.
         model.update(Event::ActiveRoute(
             1,
-            1,
+            0,
             route(1, "Headphones", Availability::Yes),
         ));
 
