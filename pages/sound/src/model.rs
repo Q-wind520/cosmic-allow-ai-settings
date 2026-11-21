@@ -19,7 +19,16 @@ pub struct Model {
     pub device_profiles: IntMap<DeviceId, Vec<ProfileInfo>>,
     pub device_profiles_active: IntMap<DeviceId, ProfileInfo>,
     pub device_routes: IntMap<DeviceId, Vec<RouteInfo>>,
+    pub device_active_routes: IntMap<DeviceId, u32>,
     pub node_devices: IntMap<NodeId, Option<u32>>,
+    /// Selectable routes (ports) of the current default output device.
+    pub sink_route_display: Vec<Arc<str>>,
+    /// Route indexes, parallel to `sink_route_display`.
+    pub sink_route_index: Vec<u32>,
+    /// Position of the active route within `sink_route_display`.
+    pub sink_route_active: Option<usize>,
+    /// Device ID and card profile device of the current default output device.
+    pub sink_route_device: Option<(DeviceId, u32)>,
     pub playback: Vec<Playback>,
     pub sinks: Nodes,
     pub sources: Nodes,
@@ -378,7 +387,8 @@ impl Model {
                 }
             }
 
-            audio_client::Event::ActiveRoute(device_id, _index, route) => {
+            audio_client::Event::ActiveRoute(device_id, index, route) => {
+                self.device_active_routes.insert(device_id, index);
                 self.update_device_names(device_id, &route);
             }
 
@@ -434,6 +444,64 @@ impl Model {
 
             _ => (),
         }
+
+        self.update_sink_routes();
+    }
+
+    /// Rebuild the list of routes (ports) which can be selected for the default
+    /// output device. Routes are included even when the port is reported as
+    /// unavailable: the hardware may still be usable, e.g. the internal speakers
+    /// while headphones are plugged in.
+    fn update_sink_routes(&mut self) {
+        self.sink_route_display.clear();
+        self.sink_route_index.clear();
+        self.sink_route_active = None;
+        self.sink_route_device = None;
+
+        let Some(sink_id) = self.default_sink else {
+            return;
+        };
+
+        let Some(device_id) = self.node_devices.get(sink_id).copied().flatten() else {
+            return;
+        };
+
+        let Some(pos) = self.sinks.id.iter().position(|&id| id == sink_id) else {
+            return;
+        };
+
+        let Some(card_profile_device) = self.sinks.card_profile_device[pos] else {
+            return;
+        };
+
+        let Some(routes) = self.device_routes.get(device_id) else {
+            return;
+        };
+
+        let active_route = self.device_active_routes.get(device_id).copied();
+
+        let mut options = routes
+            .iter()
+            .filter(|route| route.is_sink && route.devices.contains(&card_profile_device))
+            .map(|route| (route.index, Arc::from(self.translate(&route.description))))
+            .collect::<Vec<(u32, Arc<str>)>>();
+
+        options.sort_by(|a, b| a.1.cmp(&b.1));
+
+        if options.is_empty() {
+            return;
+        }
+
+        for (index, description) in options {
+            if active_route == Some(index) {
+                self.sink_route_active = Some(self.sink_route_display.len());
+            }
+
+            self.sink_route_index.push(index);
+            self.sink_route_display.push(description);
+        }
+
+        self.sink_route_device = Some((device_id, card_profile_device));
     }
 
     pub fn translate(&self, description: &str) -> String {
@@ -557,4 +625,67 @@ fn node_name(route: &str, node: &str) -> Arc<str> {
         [route, " - ", node].concat()
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Model;
+    use cosmic_settings_audio_client::{Availability, Event, NodeInfo, RouteInfo};
+
+    fn sink_node() -> NodeInfo {
+        NodeInfo {
+            name: "alsa_output.pci-test.analog-stereo".into(),
+            description: "Analog Stereo".into(),
+            device_profile_description: "Analog Stereo".into(),
+            device_id: Some(1),
+            card_profile_device: Some(0),
+            is_sink: true,
+        }
+    }
+
+    fn route(index: u32, description: &str, availability: Availability) -> RouteInfo {
+        RouteInfo {
+            name: description.to_lowercase(),
+            description: description.into(),
+            port_type: String::new(),
+            icon_name: String::new(),
+            devices: vec![0],
+            profiles: vec![0],
+            index,
+            priority: 0,
+            device: 0,
+            profile: 0,
+            availability,
+            is_sink: true,
+        }
+    }
+
+    #[test]
+    fn lists_unavailable_sink_routes_and_marks_the_active_one() {
+        let mut model = Model::default();
+        model.update(Event::Node(10, sink_node()));
+        model.update(Event::DefaultSink(10));
+        model.update(Event::Route(1, 0, route(0, "Speaker", Availability::No)));
+        model.update(Event::Route(
+            1,
+            1,
+            route(1, "Headphones", Availability::Yes),
+        ));
+        model.update(Event::ActiveRoute(
+            1,
+            1,
+            route(1, "Headphones", Availability::Yes),
+        ));
+
+        let descriptions = model
+            .sink_route_display
+            .iter()
+            .map(|description| description.to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(descriptions, ["Headphones", "Speaker"]);
+        assert_eq!(model.sink_route_index, [1, 0]);
+        assert_eq!(model.sink_route_active, Some(0));
+        assert_eq!(model.sink_route_device, Some((1, 0)));
+    }
 }

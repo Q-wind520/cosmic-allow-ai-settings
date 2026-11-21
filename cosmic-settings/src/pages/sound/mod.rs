@@ -30,6 +30,8 @@ pub enum Message {
     ReattachClient(Arc<Client>),
     /// Change the default output.
     SetDefaultSink(usize),
+    /// Change the route (port) of the default output device.
+    SetSinkRoute(usize),
     /// Change the default input output.
     SetDefaultSource(usize),
     /// Change the balance of the active sink.
@@ -212,6 +214,21 @@ impl Page {
                 {
                     block_on(async {
                         _ = client.conn.set_default(node_id, true).await;
+                    });
+                }
+            }
+
+            Message::SetSinkRoute(pos) => {
+                if let (Some((device_id, card_profile_device)), Some(&route_index), Some(client)) = (
+                    self.model.sink_route_device,
+                    self.model.sink_route_index.get(pos),
+                    self.client.as_mut(),
+                ) {
+                    block_on(async {
+                        _ = client
+                            .conn
+                            .set_route(device_id, card_profile_device, route_index, true)
+                            .await;
                     });
                 }
             }
@@ -411,6 +428,7 @@ fn output() -> Section<crate::pages::Message> {
     crate::slab!(descriptions {
         volume = fl!("sound-output", "volume");
         device = fl!("sound-output", "device");
+        port = fl!("sound-output", "port");
         _level = fl!("sound-output", "level");
         balance = fl!("sound-output", "balance");
         left = fl!("sound-output", "left");
@@ -466,6 +484,17 @@ fn output() -> Section<crate::pages::Message> {
             .apply(Element::from)
             .map(crate::pages::Message::from);
 
+            let ports = widget::dropdown::popup_dropdown(
+                &page.model.sink_route_display,
+                page.model.sink_route_active,
+                Message::SetSinkRoute,
+                window::Id::RESERVED,
+                Message::Surface,
+                crate::Message::from,
+            )
+            .apply(Element::from)
+            .map(crate::pages::Message::from);
+
             let mut controls = settings::section()
                 .title(&section.title)
                 .add(
@@ -474,6 +503,10 @@ fn output() -> Section<crate::pages::Message> {
                         .align_items(Alignment::Center),
                 )
                 .add(settings::item(&*section.descriptions[device], devices))
+                .add_maybe(
+                    (page.model.sink_route_display.len() > 1)
+                        .then(|| settings::item(&*section.descriptions[port], ports)),
+                )
                 .add(settings::item(
                     &*section.descriptions[balance],
                     widget::row::with_capacity(5)
