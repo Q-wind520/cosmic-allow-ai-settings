@@ -17,6 +17,9 @@ Changes carried in this fork:
 - Sound → Output lists each port of an output device as its own entry
   ("Headphones - …", "Speaker - …"), so the port can be switched without unplugging
   anything. See [docs/audio-output-port.md](./docs/audio-output-port.md).
+- An optional, experimental toggle exposes each output port as a separate virtual
+  device, so any volume panel can switch between them. See
+  [docs/virtual-outputs.md](./docs/virtual-outputs.md).
 
 ## Translators
 

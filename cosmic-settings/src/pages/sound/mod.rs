@@ -21,6 +21,7 @@ use std::time::Duration;
 const AUDIO_CONFIG: &str = "com.system76.CosmicAudio";
 const AMPLIFICATION_SINK: &str = "amplification_sink";
 const AMPLIFICATION_SOURCE: &str = "amplification_source";
+const VIRTUAL_OUTPUTS: &str = "virtual_outputs";
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -48,6 +49,8 @@ pub enum Message {
     ToggleOverAmplificationSink(bool),
     /// Toggle amplification for sink
     ToggleOverAmplificationSource(bool),
+    /// Enable per-port virtual output devices.
+    SetVirtualOutputs(bool),
 }
 
 impl From<Message> for crate::pages::Message {
@@ -74,6 +77,7 @@ pub struct Page {
     applied_source_volume: Arc<AtomicU32>,
     amplification_sink: bool,
     amplification_source: bool,
+    virtual_outputs: bool,
 }
 
 impl Default for Page {
@@ -96,6 +100,7 @@ impl Default for Page {
             applied_source_volume: Arc::new(AtomicU32::new(0)),
             amplification_sink: false,
             amplification_source: false,
+            virtual_outputs: false,
         }
     }
 }
@@ -107,6 +112,7 @@ impl page::Page<crate::pages::Message> for Page {
                 self.amplification_sink = config.get::<bool>(AMPLIFICATION_SINK).unwrap_or(true);
                 self.amplification_source =
                     config.get::<bool>(AMPLIFICATION_SOURCE).unwrap_or(false);
+                self.virtual_outputs = config.get::<bool>(VIRTUAL_OUTPUTS).unwrap_or(false);
                 self.sound_config = Some(config);
             }
             Err(why) => {
@@ -311,6 +317,16 @@ impl Page {
                 }
             }
 
+            Message::SetVirtualOutputs(enabled) => {
+                self.virtual_outputs = enabled;
+
+                if let Some(config) = &self.sound_config
+                    && let Err(why) = config.set(VIRTUAL_OUTPUTS, enabled)
+                {
+                    tracing::error!(?why, "Failed to save virtual outputs setting");
+                }
+            }
+
             Message::ToggleOverAmplificationSink(enabled) => {
                 self.amplification_sink = enabled;
 
@@ -428,6 +444,8 @@ fn output() -> Section<crate::pages::Message> {
         right = fl!("sound-output", "right");
         amplification = fl!("amplification");
         amplification_desc = fl!("amplification", "desc");
+        virtual_outputs = fl!("sound-output", "virtual-outputs");
+        virtual_outputs_desc = fl!("sound-output", "virtual-outputs-desc");
     });
 
     Section::default()
@@ -519,6 +537,14 @@ fn output() -> Section<crate::pages::Message> {
                                 .push(horizontal_space().width(22.0)),
                         ),
                 ));
+
+            controls = controls.add(
+                settings::item::builder(&*section.descriptions[virtual_outputs])
+                    .description(&*section.descriptions[virtual_outputs_desc])
+                    .toggler(page.virtual_outputs, |enabled| {
+                        Message::SetVirtualOutputs(enabled).into()
+                    }),
+            );
 
             controls = controls.add(
                 settings::item::builder(&*section.descriptions[amplification])

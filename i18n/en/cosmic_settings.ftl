@@ -658,6 +658,8 @@ sound-output = Output
     .balance = Balance
     .left = Left
     .right = Right
+    .virtual-outputs = Separate output devices per port (experimental)
+    .virtual-outputs-desc = Adds one device per output port so volume panels can switch between speakers and headphones. This adds a small amount of latency.
 
 sound-input = Input
     .volume = Input volume

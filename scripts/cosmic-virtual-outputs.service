@@ -1,0 +1,12 @@
+[Unit]
+Description=Per-port virtual output devices for the analog sink
+After=pipewire-pulse.service wireplumber.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/cosmic-virtual-outputs
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target
