@@ -186,6 +186,7 @@ accessibility = 无障碍
     .color-filters = 色彩滤镜
     .shake-cursor = 晃动指针来寻找它
     .shake-cursor-desc = 快速晃动鼠标以暂时放大指标
+    .cursor-size = 指针大小
 hearing = 听觉
     .mono = 播放立体声音频为单声道
 default = 默认
@@ -257,6 +258,8 @@ never = 从不
 ## Desktop: Appearance
 
 appearance = 外观
+    .title = 自定义主题
+    .description = 壁纸、颜色，以及屏幕上外观的形状
 accent-color = 主题色
 app-background = 窗口背景
 auto = 自动
@@ -298,6 +301,9 @@ style = 样式
     .round = 圆角
     .slightly-round = 微圆角
     .square = 方角
+    .frosty = 霜冻
+    .glassy = 玻璃
+    .custom = 自定义
     .frosted-glass = 磨砂玻璃效应
     .frosted-system-interface = 系统界面
     .frosted-system-interface-desc = 将磨砂玻璃应用于启动器、应用程序库、 工作区总览、屏幕控件
