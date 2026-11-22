@@ -95,8 +95,9 @@ pub fn page_title<Message: 'static>(page: &page::Info) -> Element<'_, Message> {
 
 #[must_use]
 pub fn unimplemented_page<Message: Clone + 'static>() -> Element<'static, Message> {
-    settings::section().title("")
-        .add(text::body("We haven't created that panel yet, and/or it is using a similar idea as current Pop! designs."))
+    settings::section()
+        .title("")
+        .add(text::body(crate::fl!("panel-not-implemented")))
         .into()
 }
 

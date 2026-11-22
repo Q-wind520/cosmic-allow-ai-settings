@@ -1156,3 +1156,5 @@ system-and-app-updates = System & application updates
     .schedule = Automatic update schedule
     .automatic-toggle = Enable automatic updates
     .notifications-toggle = Update notifications
+
+panel-not-implemented = We haven't created that panel yet, and/or it is using a similar idea as current Pop! designs.
