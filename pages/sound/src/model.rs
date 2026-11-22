@@ -519,6 +519,30 @@ impl Model {
             }
         }
 
+        // When port-less virtual devices exist (one per port), hide the
+        // hardware entries they stand for: "Speaker - Card" is redundant next
+        // to the "Speaker" virtual device.
+        let virtual_labels = options
+            .iter()
+            .filter(|(_, option)| option.device.is_none())
+            .map(|(label, _)| label.clone())
+            .collect::<Vec<Arc<str>>>();
+
+        if !virtual_labels.is_empty() {
+            options.retain(|(label, option)| {
+                if option.device.is_none() {
+                    return true;
+                }
+
+                let label: &str = label;
+                !virtual_labels.iter().any(|virtual_label| {
+                    label
+                        .strip_prefix(&**virtual_label)
+                        .is_some_and(|rest| rest.starts_with(" - "))
+                })
+            });
+        }
+
         options.sort_by(|a, b| a.0.cmp(&b.0));
 
         self.sink_options.clear();
@@ -684,6 +708,17 @@ mod tests {
         }
     }
 
+    fn virtual_node(name: &str, description: &str) -> NodeInfo {
+        NodeInfo {
+            name: name.into(),
+            description: description.into(),
+            device_profile_description: String::new(),
+            device_id: None,
+            card_profile_device: None,
+            is_sink: true,
+        }
+    }
+
     fn route(index: u32, description: &str, availability: Availability) -> RouteInfo {
         RouteInfo {
             name: description.to_lowercase(),
@@ -740,5 +775,32 @@ mod tests {
         );
         assert_eq!(model.sink_options_active, Some(0));
         assert!(model.sink_options.iter().all(|option| option.sink_id == 10));
+    }
+
+    #[test]
+    fn virtual_devices_replace_the_duplicated_port_entries() {
+        let mut model = Model::default();
+        model.update(Event::Node(10, sink_node()));
+        model.update(Event::Route(1, 0, route(0, "Speaker", Availability::No)));
+        model.update(Event::Route(
+            1,
+            1,
+            route(1, "Headphones", Availability::Yes),
+        ));
+        model.update(Event::Node(20, virtual_node("virtual.speaker", "Speaker")));
+        model.update(Event::Node(
+            21,
+            virtual_node("virtual.headphones", "Headphones"),
+        ));
+        model.update(Event::DefaultSink(21));
+
+        let labels = model
+            .sink_options_display
+            .iter()
+            .map(|label| label.to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(labels, ["Headphones", "Speaker"]);
+        assert_eq!(model.sink_options_active, Some(0));
     }
 }
