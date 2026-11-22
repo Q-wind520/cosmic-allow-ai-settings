@@ -23,15 +23,16 @@ License 3.0, as described in the [README](./README.md#license).
 
 ## Syncing with upstream
 
-`origin` is `pop-os/cosmic-settings`; `fork` is this repository. `master` is kept
-clean and mirrors upstream, and feature work lives on its own branch.
+`origin` is `pop-os/cosmic-settings`; `fork` is this repository. `master` is not
+a pure mirror: it also carries this fork's documentation and translations, so it
+is rebased on top of upstream. Feature work lives on its own branch.
 
 ```sh
 # update master
 git fetch origin
 git checkout master
-git merge --ff-only origin/master
-git push fork master
+git rebase origin/master
+git push --force-with-lease fork master
 
 # move the feature branch on top of the new master
 git checkout feat/sound-output-port
